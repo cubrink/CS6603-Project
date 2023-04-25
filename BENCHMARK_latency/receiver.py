@@ -1,4 +1,5 @@
-#python receiver.py -a addr=192.168.10.2 --rx-freq=3e6 -r 500e3 -m gmsk
+#python receiver.py -a addr=192.168.10.2 --rx-freq=1e6 -r 200e3 --demodulation=gmsk
+
 from gnuradio import gr, gru
 from gnuradio import blocks
 from gnuradio import eng_notation
@@ -85,8 +86,9 @@ def main():
         else: 
             error += 1
         correct_rate = float(n_right) / float(n_rcvd) *100 
-        print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
-            ok, pktno, n_rcvd, n_right, error, correct_rate)
+        # print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
+        #     ok, pktno, n_rcvd, n_right, error, correct_rate)
+        print(payload[4:])
 
     if options.to_file is not None:
         f=open(options.to_file,'w')

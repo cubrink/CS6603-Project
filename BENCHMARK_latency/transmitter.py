@@ -1,4 +1,4 @@
-# python transmitter.py -a addr=192.168.20.2 --tx-freq=3e6 --rx-freq=1e6 -r 500e3 --modulation=gmsk --demodulation=gmsk --live --from-file='/home/yue/Desktop/cat.mp4'
+# python transmitter.py -a addr=192.168.20.2 --tx-freq=3e6 --rx-freq=1e6 -r 200e3 --modulation=gmsk --demodulation=gmsk
 
 from gnuradio import gr, gru
 from gnuradio import blocks
@@ -8,7 +8,7 @@ from optparse import OptionParser
 from gnuradio import digital
 
 import random, time, struct, sys
-import cv2,imutils,base64
+import cv2,imutils,base64,socket
 
 from numpy.core.fromnumeric import size
 
@@ -18,9 +18,7 @@ from receive_path import receive_path
 from uhd_interface import uhd_transmitter,uhd_receiver
 
 global tb
-# file1 = open("/home/yue/Desktop/BENCHMARK/TX_SELF.txt",'w')
 file_count = 0
-
 
 class my_top_block(gr.top_block):
     def __init__(self, modulator, demodulator, rx_callback,options):
@@ -75,16 +73,28 @@ def rx_callback(ok, payload):
             if file_count > 200:
                 raise ValueError("200 iteration")
 
+def send_pkt(payload='', eof=False):
+    return tb.txpath.send_pkt(payload, eof)
 
+
+def set_socket():
+    BUFF_SIZE = 65536
+    server_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    server_socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,BUFF_SIZE)
+    HOST='127.0.0.1'
+    PORT=1234
+    socket_address = (HOST,PORT)
+    server_socket.bind(socket_address)
+    print('Listening at',socket_address)
+    _,client_addr = server_socket.recvfrom(BUFF_SIZE)
+    print 'Got connection from', client_addr
+    return server_socket, BUFF_SIZE
 # /////////////////////////////////////////////////////////////////////////////
 #                                   main
 # /////////////////////////////////////////////////////////////////////////////
 
 def main():
     global tb
-
-    def send_pkt(payload='', eof=False):
-        return tb.txpath.send_pkt(payload, eof)
 
     mods=digital.modulation_utils.type_1_mods()
     demods = digital.modulation_utils.type_1_demods()
@@ -100,7 +110,6 @@ def main():
                       default='gmsk',
                       help="Select modulation from: %s [default=%%default]"
                             % (', '.join(mods.keys()),))
-
     parser.add_option("-s", "--size", type="eng_float", default=4000,
                       help="set packet size [default=%default]")
     parser.add_option("-M", "--megabytes", type="eng_float", default=1.2,
@@ -109,8 +118,6 @@ def main():
                       help="enable discontinous transmission (bursts of 5 packets)")
     parser.add_option("","--from-file", default=None,
                       help="use file for packet contents")
-    parser.add_option("","--live",action="store_true",default=False,
-                        help="live play or not")
     parser.add_option("", "--compress", type="eng_float", default=20,
                       help="compress rate (1-100) [default=%default]")
     transmit_path.add_options(parser, expert_grp)
@@ -123,7 +130,6 @@ def main():
 
     (options, args) = parser.parse_args ()
 
-
     if len(args) != 0:
         parser.print_help()
         sys.exit(1)
@@ -133,68 +139,34 @@ def main():
          parser.print_help(sys.stderr)
          sys.exit(1)
 
-    if options.from_file is not None:
-        if options.live:
-            print "enable live play"
-            source_file = cv2.VideoCapture(options.from_file)
-            fps,st,frames_to_count,cnt = (0,0,20,0)
-        else:
-            source_file = open(options.from_file, 'r')
-
-    if options.from_file is None and options.live:
-        print 'using webcam'
-        source_file = cv2.VideoCapture("/dev/video4")
-        fps,st,frames_to_count,cnt = (0,0,20,0)
-
-
+    server, BUFF_SIZE = set_socket()
+    data_buffer = []
     # build the graph
-    tb = my_top_block(mods[options.modulation],demods[options.modulation],rx_callback , options)
+    tb = my_top_block(mods[options.modulation],demods[options.modulation],rx_callback, options)
     # tb.start_listen()
     r = gr.enable_realtime_scheduling()
     if r != gr.RT_OK:
         print "Warning: failed to enable realtime scheduling"
     tb.start()                       # start flow graph
-
-    # generate and send packets
-    nbytes = int(1e6 * options.megabytes)
     n = 0
     pktno = 0
-    pkt_size = int(options.size)
+
     print '\n'
-    if options.live==False:
-        while n < nbytes:
-            if options.from_file is None:
-                data = (pkt_size - 2) * chr(pktno & 0xff)
-            else:
-                data = source_file.read(pkt_size - 2)
-                if data == '':
-                    break;
-            payload = struct.pack('!H', pktno) + data
+    while True:
+        packet,_ = server.recvfrom(BUFF_SIZE)
+        data_buffer.append(packet)
+        # print(data_buffer)
+        if len(data_buffer) > 10:
+            data = data_buffer[0]
+            data_buffer.pop(0)
+            for i in range(10):
+                data += data_buffer[0]
+                data_buffer.pop(0)
+            payload = struct.pack('!H',pktno) + struct.pack('!H',78) + data
+            print("payload sent",payload)
             send_pkt(payload)
-            n += len(payload)
-            sys.stderr.write('.')
-            if options.discontinuous and pktno % 5 == 4:
-                time.sleep(1)
-            pktno += 1
-    else:
-        wow=0
-        while True:
-            WIDTH=800
-            time_start = time.time()
-            while(True):
-                # _,frame = source_file.read()
-                #frame = imutils.resize(frame,width=WIDTH)
-                # encoded,buffer = cv2.imencode('.jpg',frame,[cv2.IMWRITE_JPEG_QUALITY,options.compress])
-                # message = base64.b64encode(buffer)
-                #playload length must in [0,4096]
-                # message_len = len(message)
-                #print 'begin!!!!!'
-                # time_end = time.time()
-                payload = struct.pack('!H',pktno) + struct.pack('!H',78) + str(time.time()) + 3900 * '0'
-                # print("payload sent")
-                send_pkt(payload)
-                print(pktno, 'Sent')
-                pktno += 1        
+            # print(pktno, 'Sent')
+            pktno += 1    
 
 
     print '\n'
