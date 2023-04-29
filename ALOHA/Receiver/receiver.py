@@ -9,7 +9,8 @@ from optparse import OptionParser
 from gnuradio import digital
 from gnuradio.filter import firdes
 
-import random,struct,sys,socket,time
+
+import random,struct,sys,socket,time,os
 
 # from current dir (GNURadio->digital->narrowband)
 from receive_path import receive_path
@@ -74,7 +75,13 @@ def main():
     error = 0
     Time_start = time.time()
     data_rate = 0
-
+    #########
+    DATA_FILE_PATH = "/home/ubuntu/CS6603-Project/ALOHA/RECEIVER/DATA/datafile"
+    dfNum = 0
+    while(os.path.exists(DATA_FILE_PATH+str(dfNUm))):
+        dfNum += 1
+    DATA_FILE_PATH += str(dfNum)
+    #########
     demods = digital.modulation_utils.type_1_demods()
     mods=digital.modulation_utils.type_1_mods()
 
@@ -124,8 +131,11 @@ def main():
         # print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
         #     ok, pktno, n_rcvd, n_right, error, correct_rate)
         print(payload[4:])
-
-
+        ########
+        datafile = open(DATA_FILE_PATH, 'a')
+        datafile.write(payload[4:])
+        datafile.close()
+        ########
     if len(args) != 0:
         parser.print_help(sys.stderr)
         sys.exit(1)
