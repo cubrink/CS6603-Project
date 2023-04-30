@@ -2,8 +2,11 @@ import cv2, imutils, socket
 import numpy as np
 import time
 import base64
-
-
+import os
+######
+#DATA_FILE_PATH = "/home/ubuntu/CS6603-Project/ALOHA/Receiver/DATA/datafile"
+DATA_FILE_PATH = "DATA/datafile"
+######
 BUFF_SIZE = 65536
 server_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 server_socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,BUFF_SIZE)
@@ -22,6 +25,10 @@ node1_pktno = '0'
 node0_data = '0'
 node1_data = '0'
 while True:
+	runNum = 0
+	while(os.path.exists(DATA_FILE_PATH + str(runNum))):
+		runNum += 1
+	datafile = open(DATA_FILE_PATH + str(runNum), 'w')
 	packet,_ = server_socket.recvfrom(BUFF_SIZE)
 	data = packet.split()
 	if data[0] == '0':
@@ -30,5 +37,7 @@ while True:
 	else:
 		node1_pktno = data[1]
 		node1_data = data[2]
-	print "%5s : node0_pktno = %5s node0_data = %5s  |  %5s : node1_pktno = %5s node1_data = %5s" % (
+	datastring = "%5s : node0_pktno = %5s node0_data = %5s  |  %5s : node1_pktno = %5s node1_data = %5s" % (
                         node0, node0_pktno, node0_data, node1, node1_pktno, node1_data)
+	datafile.write(datastring)
+	print(datastring)
