@@ -9,8 +9,7 @@ from optparse import OptionParser
 from gnuradio import digital
 from gnuradio.filter import firdes
 
-
-import random,struct,sys,socket,time,os
+import random,struct,sys,socket,time
 
 # from current dir (GNURadio->digital->narrowband)
 from receive_path import receive_path
@@ -60,6 +59,17 @@ class my_top_block(gr.top_block):
 def send_pkt(payload='', eof=False):
     return tb.txpath.send_pkt(payload, eof)
 
+def set_socket():
+    BUFF_SIZE = 65536
+    client_socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+    client_socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,BUFF_SIZE)
+    HOST = '127.0.0.1'
+    PORT = 4321
+    socket_address = (HOST,PORT)
+    message = b'Hello'
+    client_socket.sendto(message,socket_address)
+    return client_socket, socket_address
+
 # /////////////////////////////////////////////////////////////////////////////
 #                                   main
 # /////////////////////////////////////////////////////////////////////////////
@@ -75,16 +85,11 @@ def main():
     error = 0
     Time_start = time.time()
     data_rate = 0
-    #########
-    DATA_FILE_PATH = "/home/ubuntu/CS6603-Project/ALOHA/RECEIVER/DATA/datafile"
-    dfNum = 0
-    while(os.path.exists(DATA_FILE_PATH+str(dfNUm))):
-        dfNum += 1
-    DATA_FILE_PATH += str(dfNum)
-    #########
+
     demods = digital.modulation_utils.type_1_demods()
     mods=digital.modulation_utils.type_1_mods()
-
+    client,address = set_socket()
+    
     # Create Options Parser:
     parser = OptionParser (option_class=eng_option, conflict_handler="resolve")
     expert_grp = parser.add_option_group("Expert")
@@ -116,26 +121,32 @@ def main():
     
     def rx_callback(ok, payload):
         global n_rcvd, n_right,temp_message,error,Time_start, Time_end,file_count
-        (pktno,) = struct.unpack('!H', payload[0:2])
-        n_rcvd += 1
-        if ok:
-            if struct.unpack('!H',payload[2:4])==(74,):
-                ACK = struct.pack('!H',pktno) +  struct.pack('!H',75) + payload[4:17]
-                time.sleep(0.1)
-                send_pkt(ACK)
-                tb.rxpath.packet_receiver._rcvd_pktq.flush()
-            n_right += 1
-        else: 
+        try:
+            (pktno,) = struct.unpack('!H', payload[0:2])
+            n_rcvd += 1
+            if ok:
+                if struct.unpack('!H',payload[2:4])==(74,):
+                    ACK = struct.pack('!H',pktno) +  struct.pack('!H',75) + payload[4:17]
+                    time.sleep(0.1)
+                    send_pkt(ACK)
+                    tb.rxpath.packet_receiver._rcvd_pktq.flush()
+                    n_right += 1
+                else:
+                    n_right += 1
+                    correct_rate = float(n_right) / float(n_rcvd) *100 
+                    print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
+                            ok, pktno, n_rcvd, n_right, error, correct_rate)
+                    if len(payload[6:]) != 0:
+                        data = payload[4:5] + ' ' + str(pktno) + ' ' + payload[5:]
+                        # print(data)
+                        client.sendto(data,address)
+            else: 
+                error += 1
+        except:
             error += 1
-        correct_rate = float(n_right) / float(n_rcvd) *100 
-        # print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
-        #     ok, pktno, n_rcvd, n_right, error, correct_rate)
-        print(payload[4:])
-        ########
-        datafile = open(DATA_FILE_PATH, 'a')
-        datafile.write(payload[4:])
-        datafile.close()
-        ########
+        
+
+
     if len(args) != 0:
         parser.print_help(sys.stderr)
         sys.exit(1)
@@ -144,7 +155,7 @@ def main():
         sys.stderr.write("You must specify -f FREQ or --freq FREQ\n")
         parser.print_help(sys.stderr)
         sys.exit(1)
-    
+
     # build the graph
     tb = my_top_block(mods[options.modulation],demods[options.modulation], rx_callback, options)
     tb.start_listen()
