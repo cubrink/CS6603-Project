@@ -19,9 +19,10 @@ from transmit_path import transmit_path
 from receive_path import receive_path
 from uhd_interface import uhd_transmitter,uhd_receiver
 
-global tb, pktno
+global tb, pktno, server
 ack_flag = False
 ALOHA_flag = False
+data_buffer = []
 
 
 class my_top_block(gr.top_block):
@@ -69,7 +70,7 @@ class timer(_threading.Thread):
         while not ack_flag:
             end_time = time.time()
             if end_time - start_time > self.time:
-                print('listening timeout')
+                # print('ACK Timeout')
                 break
         self.target()
 
@@ -83,20 +84,35 @@ class ALOHA_listener(_threading.Thread): # <--------------------------change lis
         self.start()
 
     def run(self):
-        run_inteval = 1
+        run_inteval = 1   # <--------------------------change listening interval
         self._timer = timer(self.status, run_inteval,self.stopper)
         tb.rxpath.packet_receiver._rcvd_pktq.flush()
         self.listener()
         self._timer.start()
         self._timer.join()
 
+
+class SERVER(_threading.Thread):
+    def __init__(self):
+        _threading.Thread.__init__(self)
+        self.setDaemon(1)
+        self.start()
+    
+    def run(self):
+        global data_buffer
+        while True:
+            packet,_ = server.recvfrom(BUFF_SIZE)
+            # print(data_buffer)
+            data_buffer.append(packet)
+
 def rx_callback(ok, payload):
         global ack_flag, ALOHA_flag
         if ok:
             if struct.unpack('!H', payload[2:4]) == (75,):
-                print('ACK received!!!!')
+                # print('ACK  Received')
                 ack_flag = True
                 ALOHA_flag = True
+
 
 
 def send_pkt(payload='', eof=False):
@@ -132,10 +148,13 @@ def set_socket():
 
 def main():
     global tb,ALOHA_flag,ack_flag
+    global server, BUFF_SIZE, data_buffer
 
     mods=digital.modulation_utils.type_1_mods()
     demods = digital.modulation_utils.type_1_demods()
-
+    server, BUFF_SIZE = set_socket()
+    s = SERVER()
+    
     parser = OptionParser(option_class=eng_option, conflict_handler="resolve")
     expert_grp = parser.add_option_group("Expert")
 
@@ -187,9 +206,7 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    server, BUFF_SIZE = set_socket()
     data_buffer = []
-    temp_data = []
     # build the graph
     tb = my_top_block(mods[options.modulation],demods[options.modulation],rx_callback, options)
     r = gr.enable_realtime_scheduling()
@@ -201,30 +218,35 @@ def main():
     n = 0
     pktno = 0
     while True:
-        packet,_ = server.recvfrom(BUFF_SIZE)
-        data_buffer.append(packet)
         ALOHA_flag = False
         ack_flag = False
-        if len(data_buffer) > 10:
-            for i in range(10):
-                payload = struct.pack('!H',pktno) + struct.pack('!H',78) + data_buffer[i]
-                temp_data.append(payload)
-                pktno += 1
-            data_buffer = data_buffer[10:]
-            for pld in temp_data:
-                print("payload sent",pld)
-                send_pkt(pld)
+        if len(data_buffer) != 0:
+            payload = struct.pack('!H',pktno) + struct.pack('!H',78) + '0' + data_buffer[0]
+            print(pktno, "payload sent",payload[5:],data_buffer[0],'removed')
+            data_buffer.pop(0)
+            send_pkt(payload)
+
+            #-----------------------------------------------
+            # UNCOMMENT to enable ALOHA
             flag = ALOHA(pktno)
             while not flag:
-                for pld in temp_data:
-                    print("payload sent",pld)
-                    send_pkt(pld)
+                if random.randint(0,1) == 0:
+                    print('wait 0.5 second')
+                    time.sleep(0.5)
+                    print(pktno, "payload sent",payload[5:])
+                    send_pkt(payload)
+                else:
+                    print('wait 1 second')
+                    time.sleep(1)
+                    print(pktno, "payload sent",payload[5:])
+                    send_pkt(payload)
                 flag = ALOHA(pktno)
             else:
-                temp_data = []
                 ALOHA_flag = False
                 ack_flag = False
-
+            
+            #-----------------------------------------------
+            pktno += 1
             
 
 
