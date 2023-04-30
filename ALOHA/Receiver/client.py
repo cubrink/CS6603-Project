@@ -24,20 +24,24 @@ node0_pktno = '0'
 node1_pktno = '0'
 node0_data = '0'
 node1_data = '0'
+runNum = 0
+while(os.path.exists(DATA_FILE_PATH + str(runNum))):
+	runNum += 1
+datafile = open(DATA_FILE_PATH + str(runNum), 'w')
+
 while True:
-	runNum = 0
-	while(os.path.exists(DATA_FILE_PATH + str(runNum))):
-		runNum += 1
-	datafile = open(DATA_FILE_PATH + str(runNum), 'w')
 	packet,_ = server_socket.recvfrom(BUFF_SIZE)
 	data = packet.split()
 	if data[0] == '0':
 		node0_pktno = data[1]
 		node0_data = data[2]
+		datastring = ",".join([node0, node0_pktno, node0_data])
 	else:
 		node1_pktno = data[1]
 		node1_data = data[2]
-	datastring = "%5s : node0_pktno = %5s node0_data = %5s  |  %5s : node1_pktno = %5s node1_data = %5s" % (
+		datastring = ",".join([node1, node1_pktno, node1_data])
+	printstring = "%5s : node0_pktno = %5s node0_data = %5s  |  %5s : node1_pktno = %5s node1_data = %5s" % (
                         node0, node0_pktno, node0_data, node1, node1_pktno, node1_data)
-	datafile.write(datastring)
+	
+	datafile.write(datastring+"\n")
 	print(datastring)
