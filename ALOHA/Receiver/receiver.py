@@ -77,7 +77,7 @@ def set_socket():
 global n_rcvd, n_right
 
 def main():
-    global tb, n_rcvd, n_right,temp_message,error, Time_start, Time_end, data_rate
+    global tb, n_rcvd, n_right,temp_message,error, Time_start, Time_end, data_rate,data_count
 
     temp_message=''
     n_rcvd = 0
@@ -85,6 +85,7 @@ def main():
     error = 0
     Time_start = time.time()
     data_rate = 0
+    data_count = 0
 
     demods = digital.modulation_utils.type_1_demods()
     mods=digital.modulation_utils.type_1_mods()
@@ -120,13 +121,16 @@ def main():
 
     
     def rx_callback(ok, payload):
-        global n_rcvd, n_right,temp_message,error,Time_start, Time_end,file_count
+        global n_rcvd, n_right,temp_message,error,Time_start, Time_end,file_count, data_count
         try:
             (pktno,) = struct.unpack('!H', payload[0:2])
             n_rcvd += 1
             if ok:
-                if struct.unpack('!H',payload[2:4])==(74,):
-                    ACK = struct.pack('!H',pktno) +  struct.pack('!H',75) + payload[4:17]
+                if struct.unpack('!H',payload[2:4])==(66,):
+                    if payload[4] == '0':
+                        ACK = struct.pack('!H',pktno) +  struct.pack('!H',75) + '0'
+                    elif payload[4] == '1':
+                        ACK = struct.pack('!H',pktno) +  struct.pack('!H',75) + '0'
                     time.sleep(0.1)
                     send_pkt(ACK)
                     tb.rxpath.packet_receiver._rcvd_pktq.flush()
@@ -136,8 +140,10 @@ def main():
                     correct_rate = float(n_right) / float(n_rcvd) *100 
                     print "ok = %5s  pktno = %4d  n_rcvd = %4d  n_right = %4d  error = %4d correct = %.2f" % (
                             ok, pktno, n_rcvd, n_right, error, correct_rate)
-                    if len(payload[6:]) != 0:
-                        data = payload[4:5] + ' ' + str(pktno) + ' ' + payload[5:]
+                    if len(payload[5:]) != 0:
+                        data_count += 1
+                        data = payload[4] + ' ' + str(pktno) + ' ' + payload[5:] + ' '
+                        data += str(n_rcvd) + ' '+ str(n_right) + ' ' + str(data_count)
                         # print(data)
                         client.sendto(data,address)
             else: 
