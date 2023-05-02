@@ -239,6 +239,7 @@ def main():
             #-----------------------------------------------
             # UNCOMMENT to enable ALOHA
             flag = ALOHA(pktno)
+            datafile.write(str(pktno)+' '+str(int(flag))+' '+str(time.time())+'\n')
             while not flag:
                 ack_count += 1
                 if random.randint(0,1) == 0:
@@ -252,8 +253,8 @@ def main():
                     print(pktno, "payload sent",payload[5:])
                     send_pkt(payload)
                 flag = ALOHA(pktno)
+                datafile.write(str(pktno)+' '+str(int(flag))+' '+str(time.time())+'\n')
             else:
-                datafile.write(str(pktno) + ' ' + str(ack_count)+"\n")
                 ALOHA_flag = False
                 ack_flag = False
                 ack_count = 1
