@@ -18,6 +18,7 @@ from numpy.core.fromnumeric import size
 from transmit_path import transmit_path
 from receive_path import receive_path
 from uhd_interface import uhd_transmitter,uhd_receiver
+import os
 
 global tb, pktno, server
 ack_flag = False
@@ -70,7 +71,7 @@ class timer(_threading.Thread):
         while not ack_flag:
             end_time = time.time()
             if end_time - start_time > self.time:
-                # print('ACK Timeout')
+                print('ACK Timeout')
                 break
         self.target()
 
@@ -108,8 +109,9 @@ class SERVER(_threading.Thread):
 def rx_callback(ok, payload):
         global ack_flag, ALOHA_flag
         if ok:
-            if struct.unpack('!H', payload[2:4]) == (75,):
+            if struct.unpack('!H', payload[2:4]) == (75,) and payload[4] == '0':
                 # print('ACK  Received')
+                print(payload)
                 ack_flag = True
                 ALOHA_flag = True
 
@@ -119,7 +121,7 @@ def send_pkt(payload='', eof=False):
     return tb.txpath.send_pkt(payload, eof)
     
 def ALOHA(pktno):
-    payload = struct.pack('!H',pktno) +  struct.pack('!H',74)
+    payload = struct.pack('!H',pktno) +  struct.pack('!H',66) + '0'
     send_pkt(payload)
     tb.rxpath.packet_receiver._rcvd_pktq.flush()
     ALOHA = ALOHA_listener(tb.listen_status,tb.start_listen,tb.stop_listen)
@@ -148,13 +150,21 @@ def set_socket():
 
 def main():
     global tb,ALOHA_flag,ack_flag
-    global server, BUFF_SIZE, data_buffer
+    global server, BUFF_SIZE, data_buffer, ack_count
+
+    ack_count = 1
 
     mods=digital.modulation_utils.type_1_mods()
     demods = digital.modulation_utils.type_1_demods()
     server, BUFF_SIZE = set_socket()
     s = SERVER()
     
+    DATA_FILE_PATH = "DATA/datafile"
+    runNum = 0
+    while(os.path.exists(DATA_FILE_PATH + str(runNum))):
+        runNum += 1
+    datafile = open(DATA_FILE_PATH + str(runNum), 'w')
+
     parser = OptionParser(option_class=eng_option, conflict_handler="resolve")
     expert_grp = parser.add_option_group("Expert")
 
@@ -222,7 +232,7 @@ def main():
         ack_flag = False
         if len(data_buffer) != 0:
             payload = struct.pack('!H',pktno) + struct.pack('!H',78) + '0' + data_buffer[0]
-            print(pktno, "payload sent",payload[5:],data_buffer[0],'removed')
+            # print(pktno, "payload sent",payload[5:],data_buffer[0],'removed')
             data_buffer.pop(0)
             send_pkt(payload)
 
@@ -230,6 +240,7 @@ def main():
             # UNCOMMENT to enable ALOHA
             flag = ALOHA(pktno)
             while not flag:
+                ack_count += 1
                 if random.randint(0,1) == 0:
                     print('wait 0.5 second')
                     time.sleep(0.5)
@@ -242,9 +253,10 @@ def main():
                     send_pkt(payload)
                 flag = ALOHA(pktno)
             else:
+                datafile.write(str(pktno) + ' ' + str(ack_count)+"\n")
                 ALOHA_flag = False
                 ack_flag = False
-            
+                ack_count = 1
             #-----------------------------------------------
             pktno += 1
             
