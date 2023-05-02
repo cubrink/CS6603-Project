@@ -1,4 +1,5 @@
-import cv2, imutils, socket
+#import cv2, imutils, socket
+import socket
 import numpy as np
 import time
 import base64
@@ -35,13 +36,13 @@ while True:
 	if data[0] == '0':
 		node0_pktno = data[1]
 		node0_data = data[2]
-		datastring = ",".join([node0, node0_pktno, node0_data])
+		datastring = ",".join([node0, node0_pktno, node0_data, str(time.time())])
 	else:
 		node1_pktno = data[1]
 		node1_data = data[2]
-		datastring = ",".join([node1, node1_pktno, node1_data])
+		datastring = ",".join([node1, node1_pktno, node1_data, str(time.time())])
 	printstring = "%5s : node0_pktno = %5s node0_data = %5s  |  %5s : node1_pktno = %5s node1_data = %5s" % (
                         node0, node0_pktno, node0_data, node1, node1_pktno, node1_data)
 	
 	datafile.write(datastring+"\n")
-	print(datastring)
+	print(printstring)
